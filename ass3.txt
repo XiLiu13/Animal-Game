@@ -1,0 +1,125 @@
+pay attention to alignment of 16 byte pointer
+
+
+
+movq	$0, 200(%r12)
+movq	$0, 208(%r12)
+the destinations are memory locations (pointers) , which are 64-bits
+
+
+    
+char new_question_or_animal[STRING_SIZE];
+#  new_question_or_animal: -216(%rbp)
+leaq	-216(%rbp), %rcx	
+must pass the address of the array
+
+
+
+leaq and movq are COMPLETELY DIFFERENT instructions.  Please be sure to read my lectures notes carefully.  As the lecture notes state, leaq computes an address, but stops there and never accesses memory.  Movq computes the same address, but then either reads from or writes to memory at that address.  That is, suppose a variable x is at -8(%rbp).  The instruction,
+
+movq -8(%rbp),%rax
+
+computes the address of x, namely %rbp-8, and then retrieves the value of x at that location in memory and puts the value of x into %eax. 
+
+On the other hand, the instruction
+
+leaq -8(%rbp),%rax
+
+just computes the address, namely %rbp-8, and puts that address (i.e. %rbp-8) into %rax.  This is exactly the same as performing the following two instructions:
+
+movq   %rbp,%rax    # copy %rbp into %rax
+subq     $8,%rax        # %rax = %rax - 8
+
+The only advantage of using %leaq is that it takes one less instruction.  Notice that the above two instructions never actually retrieve anything from memory.
+
+The analogy in C makes things even clearer.   Consider how different these two statements are:
+
+y = x;     // copy the value of x to y  (this is movq)
+
+y = &x;    // copy the address of x to y (this is leaq)
+
+Very different, right?
+
+Ben
+
+
+
+
+
+
+# make space on the stack for the array and the two callee-saved registers, save the old versions of the regs on the stack so that the regs can be overwritten:
+movq	%rbx, -8(%rbp)
+movq	%r12, -16(%rbp)
+
+
+# Restore the callee-saved registers and remove locals from stack (by adding to %rsp)
+movq	-8(%rbp), %rbx
+movq	-16(%rbp), %r12
+addq	$224, %rsp
+
+
+
+(1) If you are having trouble visualizing the stack, and the relationship between %rbp, %rsp, and the items on the stack, be sure to read through my notes for lecture 18 on the course website.
+
+(2) All calls to read_line() need to have two parameters, where the second parameter gives the maximum number of characters to read (which, in this program is STRING_SIZE, which is 200).  In the comments I put into animals.s, I left out the second parameter in some places -- so please make sure you are always calling read_line with two parameters.  The C code that I provided in c_animals.c is correct, so if there is any question about what the correct C code looks like, look in c_animals.c.
+
+
+
+
+
+
+The field p->question_or_animal does not contain a pointer to an array, it is the array itself. So, if you write
+
+movq (%rbx),%rdi
+
+you'd be copying the first 8 bytes of the string into %rdi. You would not be copying the address of the string. For example, if the string is "Is it a canine\n", then you'd be writing "Is it a " into %rdi, which is clearly not what you want.  
+
+By writing
+
+leaq (%rbx),%rdi
+
+you'd be writing the address of the start of the string into %rdi, which is what you want.
+
+Note that NODE is defined in this assignment as,
+
+typedef struct node {
+  char question_or_animal[STRING_SIZE];
+  struct node *left;
+  struct node *right;
+} NODE;
+
+so you can see that question_or_animal is the actual array, not a pointer somewhere else. This is different from Programming Assignment 1, where the word field of a NODE just contained a pointer:
+
+typedef struct node {
+  char *word;
+  struct node *left;
+  struct node *right;
+} NODE;
+
+If you were writing Programming Assignment 1 in assembly, to call printf on the word field of a NODE, you would use movq to pass the string as a parameter.
+
+
+
+
+
+Please note there is no such thing as a "register on stack".  A register is a piece of hardware sitting in the processor.  The stack is an area of memory.  This question has nothing to do with the stack.  When a NODE is allocated using malloc(), which it has to be in your program, the node is in the heap.
+
+In your example, I assume that %rbx points to a structure in memory (in the heap) of type NODE.  So, the picture in your head (for this example, not for Programming Assignment 3) should be:
+
+                                                      -------------
+                                                      |    .....        |
+                                                      |    .....        |
+                                                      |  q_or_a    |
+                                                      |    .....        |
+                                                      |    .....        |    starts at 16(%rbx)
+                                                      -------------
+                                                      |     right    |     at 8(%rbx)
+                                                      -------------
+%rbx   ----------------------------> |     left      |      at 0(%rbx)
+                                                      -------------
+
+So, if %rbx is pointing to a node, then
+
+leaq  16(%rbx), %rdi
+
+would load the address of the question_or_animal field of the node that %rbx points to into %rdi. 
